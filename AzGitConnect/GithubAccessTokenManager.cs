@@ -1,7 +1,8 @@
-﻿using System.Text.Json;
+﻿using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GithubAzureUtility;
+namespace AzGitConnect;
 
 public class GithubAccessTokenManager(string clientId)
 {
@@ -38,8 +39,7 @@ public class GithubAccessTokenManager(string clientId)
         var response = await httpClient.PostAsync(DeviceCodeUrl, content);
         response.EnsureSuccessStatusCode();
 
-        var responseBody = await response.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<DeviceCodeResponse>(responseBody)
+        return await response.Content.ReadFromJsonAsync<DeviceCodeResponse>()
             ?? throw new Exception("Failed to retrieve device code.");
     }
 

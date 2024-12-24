@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using Sodium;
 
-namespace GithubAzureUtility;
+namespace AzGitConnect;
 
 internal class GitHubSecretManager(string repo, string accessToken)
 {

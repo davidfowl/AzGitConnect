@@ -1,5 +1,5 @@
 ﻿using System.CommandLine;
-using GithubAzureUtility;
+using AzGitConnect;
 
 // This is a github app that supports device flow
 const string GitHubClientId = "Ov23liBhP6pOLo4HJgKO";

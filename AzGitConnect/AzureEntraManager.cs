@@ -2,7 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace GithubAzureUtility;
+namespace AzGitConnect;
 
 internal class AzureEntraManager
 {
@@ -104,7 +104,7 @@ internal class AzureEntraManager
             File.WriteAllText(parametersFile, parameters);
 
             await ExecuteCommand("az", $"ad app federated-credential create --id \"{appId}\" --parameters \"{parametersFile}\"");
-            
+
             Console.WriteLine("Federated Identity Credential added successfully.");
 
             dir.Delete(true);
