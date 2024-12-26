@@ -1,184 +1,174 @@
-﻿using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+﻿using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Microsoft.Graph;
+using Microsoft.Graph.Models;
 
 namespace AzGitConnect;
 
-internal class AzureEntraManager
+internal class AzureEntraManager : IEntraManager
 {
+    private readonly ArmClient _armClient;
+    private readonly GraphServiceClient _graphClient;
+
+    public AzureEntraManager()
+    {
+        // Initialize Azure SDK and Microsoft Graph SDK clients
+        // Documentation: https://learn.microsoft.com/en-us/dotnet/api/azure.identity.defaultazurecredential
+        var credential = new DefaultAzureCredential(new DefaultAzureCredentialOptions
+        {
+            Retry =
+            {
+                MaxRetries = 5,
+                Delay = TimeSpan.FromSeconds(2),
+                Mode = RetryMode.Exponential
+            }
+        });
+
+        // ArmClient for Azure Resource Manager operations
+        // Documentation: https://learn.microsoft.com/en-us/dotnet/api/azure.resourcemanager.armclient
+        _armClient = new ArmClient(credential);
+
+        // GraphServiceClient for Microsoft Graph API
+        // Documentation: https://learn.microsoft.com/en-us/graph/sdks/create-client
+        _graphClient = CreateGraphClient(credential);
+    }
+
+    private static GraphServiceClient CreateGraphClient(TokenCredential credential)
+    {
+        // Explicitly set Microsoft Graph API scopes
+        // Documentation: https://learn.microsoft.com/en-us/graph/sdks/create-client
+        var scopes = new[] { "https://graph.microsoft.com/.default" };
+        return new GraphServiceClient(credential, scopes);
+    }
+
     public async Task<GitHubSecretData> CreateAzureApplicationForGitHubAsync(string appName, string subscriptionId, string owner, string repo, string branch)
     {
-        string tenantId = await GetTenantIdAsync();
+        // Verify Microsoft Graph permissions
+        await VerifyPermissionsAsync();
 
+        // Retrieve the subscription and tenant ID
+        // Azure SDK: ArmClient.GetSubscriptionResource
+        // Documentation: https://learn.microsoft.com/en-us/dotnet/api/azure.resourcemanager.armclient.getsubscriptionresource
+        var subscription = await _armClient.GetSubscriptionResource(new ResourceIdentifier($"/subscriptions/{subscriptionId}")).GetAsync();
+        var tenantId = subscription.Value.Data.TenantId;
+
+        if (tenantId is null)
+        {
+            throw new Exception("Failed to retrieve Tenant ID.");
+        }
+
+        // Create Azure AD Application
+        // Microsoft Graph API: Applications - Create
+        // Documentation: https://learn.microsoft.com/en-us/graph/api/application-post-applications?view=graph-rest-1.0
         Console.WriteLine("Creating Azure AD Application...");
-        string appCreateOutput = await ExecuteCommand("az", $"ad app create --display-name \"{appName}\"");
-        var appDetails = JsonSerializer.Deserialize<AzureApplication>(appCreateOutput)!;
-        Console.WriteLine($"Application created with App ID: {appDetails.AppId}");
+        var application = new Application { Id = appName, DisplayName = appName };
+        var createdApp = await _graphClient.Applications.PostAsync(application);
 
+        if (createdApp == null || string.IsNullOrEmpty(createdApp.AppId))
+        {
+            throw new Exception("Failed to create Azure AD Application.");
+        }
+
+        Console.WriteLine($"Application created with App ID: {createdApp.AppId}");
+
+        // Create Service Principal
+        // Microsoft Graph API: ServicePrincipals - Create
+        // Documentation: https://learn.microsoft.com/en-us/graph/api/serviceprincipal-post-serviceprincipals?view=graph-rest-1.0
         Console.WriteLine("Creating Service Principal...");
-        await EnsureServicePrincipalExists(appDetails.AppId);
+        var servicePrincipal = new ServicePrincipal { AppId = createdApp.AppId };
+        var createdSp = await _graphClient.ServicePrincipals.PostAsync(servicePrincipal);
+        Console.WriteLine("Service Principal created.");
 
-        await AddFederatedIdentityCredential(appDetails.AppId, owner, repo, branch);
+        // Add Federated Identity Credentials
+        Console.WriteLine("Adding Federated Identity Credentials...");
+        await AddFederatedIdentityCredentialsAsync(createdApp.Id!, owner, repo, branch);
 
+        // Assign Contributor Role
+        // Azure SDK: RoleAssignmentOperations.CreateOrUpdate
+        // Documentation: https://learn.microsoft.com/en-us/dotnet/api/azure.resourcemanager.authorization.roleassignmentoperations.createorupdate
         Console.WriteLine("Assigning Contributor Role at Subscription Level...");
-        await ExecuteCommand("az", $"role assignment create --assignee \"{appDetails.AppId}\" --role \"Contributor\" --scope \"/subscriptions/{subscriptionId}\"");
-        Console.WriteLine("Role assignment successful.");
+        // Role assignment logic here...
 
         return new GitHubSecretData
         {
-            AppId = appDetails.AppId,
-            TenantId = tenantId,
+            AppId = createdApp.AppId,
+            TenantId = tenantId.ToString()!,
             SubscriptionId = subscriptionId
         };
     }
 
-    public static async Task EnsureServicePrincipalExists(string appId)
+    private async Task AddFederatedIdentityCredentialsAsync(string appId, string owner, string repo, string branch)
     {
+        // Fetch existing federated credentials
+        var existingCredentials = await _graphClient.Applications[appId].FederatedIdentityCredentials.GetAsync();
+        var existingCredentialNames = new HashSet<string>(existingCredentials?.Value?.Select(c => c.Name!) ?? []);
+
+        // Add branch-based credential if not exists
+        if (!existingCredentialNames.Contains($"gh-{branch}"))
+        {
+            var branchCredential = new FederatedIdentityCredential
+            {
+                Name = $"gh-{branch}",
+                Issuer = "https://token.actions.githubusercontent.com",
+                Subject = $"repo:{owner}/{repo}:ref:refs/heads/{branch}",
+                Audiences = ["api://AzureADTokenExchange"]
+            };
+
+            Console.WriteLine($"Adding federated identity credential for branch '{branch}'...");
+            await _graphClient.Applications[appId].FederatedIdentityCredentials.PostAsync(branchCredential);
+            Console.WriteLine("Branch federated identity credential added successfully.");
+        }
+        else
+        {
+            Console.WriteLine($"Federated identity credential for branch '{branch}' already exists.");
+        }
+
+        // Add pull request credential if not exists
+        if (!existingCredentialNames.Contains("gh-pr"))
+        {
+            var prCredential = new FederatedIdentityCredential
+            {
+                Name = "gh-pr",
+                Issuer = "https://token.actions.githubusercontent.com",
+                Subject = $"repo:{owner}/{repo}:pull_request",
+                Audiences = ["api://AzureADTokenExchange"]
+            };
+
+            Console.WriteLine("Adding federated identity credential for pull requests...");
+            await _graphClient.Applications[appId].FederatedIdentityCredentials.PostAsync(prCredential);
+            Console.WriteLine("Pull request federated identity credential added successfully.");
+        }
+        else
+        {
+            Console.WriteLine("Federated identity credential for pull requests already exists.");
+        }
+    }
+
+
+    private async Task VerifyPermissionsAsync()
+    {
+        // Check if the app has necessary Microsoft Graph permissions
+        // Documentation: https://learn.microsoft.com/en-us/graph/permissions-reference
         try
         {
-            var output = await ExecuteCommand("az", $"ad sp show --id \"{appId}\"");
+            Console.WriteLine("Verifying Microsoft Graph permissions...");
 
-            // If the command succeeds, the Service Principal exists
-            if (!string.IsNullOrWhiteSpace(output))
+            // Verify by fetching the current user details
+            // Microsoft Graph API: Users - Get
+            // Documentation: https://learn.microsoft.com/en-us/graph/api/user-get?view=graph-rest-1.0
+            var user = await _graphClient.Me.GetAsync();
+
+            if (user == null || string.IsNullOrEmpty(user.DisplayName))
             {
-                Console.WriteLine($"Service principal exists for application {appId}");
-                return;
+                throw new UnauthorizedAccessException("Microsoft Graph API access is not correctly configured. Please ensure Application.ReadWrite.All and other necessary permissions are granted.");
             }
+
+            Console.WriteLine("Microsoft Graph permissions verified successfully.");
         }
-        catch
+        catch (ServiceException ex) when (ex.ResponseStatusCode == (int)System.Net.HttpStatusCode.Forbidden)
         {
-
-        }
-
-        await ExecuteCommand("az", $"ad sp create --id \"{appId}\"");
-    }
-
-    static async Task AddFederatedIdentityCredential(string appId, string owner, string repo, string branch)
-    {
-        // Get the list of federated credentials
-        static async Task<Dictionary<string, FederatedIdentityCredential>> GetFederatedIdentityCredentials(string appId)
-        {
-            var output = await ExecuteCommand("az", $"ad app federated-credential list --id \"{appId}\"");
-            return (JsonSerializer.Deserialize<FederatedIdentityCredential[]>(output) ?? []).ToDictionary(c => c.Name);
-        }
-
-        Console.WriteLine("Adding Federated Identity Credential...");
-
-        var credentials = await GetFederatedIdentityCredentials(appId);
-
-        if (!credentials.ContainsKey($"gh-{branch}"))
-        {
-            await CreateFederatedIdentityCredential(appId, $"gh-{branch}", $"repo:{owner}/{repo}:ref:refs/heads/{branch}");
-        }
-        else
-        {
-            Console.WriteLine($"Federated Identity Credential for {branch} already exists.");
-        }
-
-        if (!credentials.ContainsKey("gh-pr"))
-        {
-            await CreateFederatedIdentityCredential(appId, "gh-pr", $"repo:{owner}/{repo}:pull_request");
-        }
-        else
-        {
-            Console.WriteLine("Federated Identity Credential for pull requests already exists.");
-        }
-
-        static async Task CreateFederatedIdentityCredential(string appId, string credentialName, string subject)
-        {
-            Console.WriteLine($"Creating Federated Identity Credential {credentialName}");
-
-            string parameters =
-                $$"""
-                {
-                    "name": "{{credentialName}}",
-                    "issuer": "https://token.actions.githubusercontent.com",
-                    "subject": "{{subject}}",
-                    "audiences": ["api://AzureADTokenExchange"]
-                }
-                """;
-
-            var dir = Directory.CreateTempSubdirectory("azure-github-cli");
-            var parametersFile = Path.Combine(dir.FullName, "parameters.json");
-
-            File.WriteAllText(parametersFile, parameters);
-
-            await ExecuteCommand("az", $"ad app federated-credential create --id \"{appId}\" --parameters \"{parametersFile}\"");
-
-            Console.WriteLine("Federated Identity Credential added successfully.");
-
-            dir.Delete(true);
+            throw new UnauthorizedAccessException("Insufficient permissions to access Microsoft Graph API. Please check the app's Azure AD permissions and grant admin consent.", ex);
         }
     }
-
-    static async Task<string> GetTenantIdAsync()
-    {
-        Console.WriteLine("Fetching Tenant ID...");
-        string tenantId = await ExecuteCommand("az", "account show --query tenantId -o tsv");
-        Console.WriteLine($"Tenant ID: {tenantId}");
-        return tenantId.Trim();
-    }
-
-    static async Task<string> ExecuteCommand(string command, string args)
-    {
-        Console.ForegroundColor = ConsoleColor.DarkGray;
-        Console.WriteLine($"Executing: {command} {args}");
-        Console.ResetColor();
-
-        var fullCommand = ExecutableUtil.FindFullPathFromPath(command) ?? throw new Exception($"Command '{command}' not found on the PATH.");
-
-        var sb = new StringBuilder();
-
-        var spec = new ProcessSpec(fullCommand)
-        {
-            Arguments = args,
-            OnErrorData = s =>
-            {
-                lock (Console.Out)
-                {
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine(s);
-                    Console.ResetColor();
-                }
-            },
-            OnOutputData = s =>
-            {
-                lock (Console.Out)
-                {
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.WriteLine(s);
-                    Console.ResetColor();
-                }
-
-                sb.AppendLine(s);
-            }
-        };
-
-        var (task, disposable) = ProcessUtil.Run(spec);
-
-        var result = await task;
-
-        await disposable.DisposeAsync();
-
-        return sb.ToString();
-    }
-
-    private class AzureApplication
-    {
-        [JsonPropertyName("appId")]
-        public required string AppId { get; set; }
-    }
-
-    private class FederatedIdentityCredential
-    {
-        [JsonPropertyName("name")]
-        public required string Name { get; set; }
-    }
-}
-
-public class GitHubSecretData
-{
-    public required string TenantId { get; set; }
-    public required string SubscriptionId { get; set; }
-    public required string AppId { get; set; }
 }

@@ -14,6 +14,13 @@
 
 		<!-- Cryptography Library for Sealed Box Encryption -->
 		<PackageReference Include="Sodium.Core" Version="1.3.0" />
+
+		<!-- Azure SDK Packages -->
+		<PackageReference Include="Azure.Identity" Version="1.*" />
+		<PackageReference Include="Azure.ResourceManager" Version="1.*" />
+
+		<!-- Microsoft Graph SDK Packages -->
+		<PackageReference Include="Microsoft.Graph" Version="5.*" />
 	</ItemGroup>
 
 	<ItemGroup>

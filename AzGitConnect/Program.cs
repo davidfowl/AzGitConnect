@@ -7,19 +7,21 @@ const string GitHubClientId = "Ov23liBhP6pOLo4HJgKO";
 var subscriptionIdOption = new Option<string>("--subscription-id", "Azure Subscription ID") { IsRequired = true };
 var repoOption = new Option<string>("--repo", "GitHub repository in the format owner/repo") { IsRequired = true };
 var appName = new Option<string>("--app-name", "Name of the Azure AD Application to create");
+var useAzCli = new Option<bool>("--use-az-cli", "Use the Azure CLI for management operations");
 
 var rootCommand = new RootCommand("CLI tool for configuring GitHub Actions with Azure authentication.")
 {
     subscriptionIdOption,
     repoOption,
-    appName
+    appName,
+    useAzCli
 };
 
-rootCommand.SetHandler(RunAsync, subscriptionIdOption, repoOption, appName);
+rootCommand.SetHandler(RunAsync, subscriptionIdOption, repoOption, appName, useAzCli);
 
 await rootCommand.InvokeAsync(args);
 
-static async Task RunAsync(string subscriptionId, string fullRepo, string appName)
+static async Task RunAsync(string subscriptionId, string fullRepo, string appName, bool useAzCli)
 {
     var (owner, repo) = fullRepo.Split('/') switch
     {
@@ -29,7 +31,7 @@ static async Task RunAsync(string subscriptionId, string fullRepo, string appNam
 
     appName ??= $"gh-{fullRepo.Replace('/', '-')}";
 
-    var azureManager = new AzureEntraManager();
+    IEntraManager azureManager = useAzCli ? new AzCliAzureEntraManager() : new AzureEntraManager();
     var githubSecretData = await azureManager.CreateAzureApplicationForGitHubAsync(appName, subscriptionId, owner, repo, "main");
 
     Console.WriteLine("Starting GitHub OAuth flow...");
