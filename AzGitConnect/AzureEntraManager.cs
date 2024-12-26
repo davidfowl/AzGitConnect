@@ -51,26 +51,35 @@ internal class AzureEntraManager : IEntraManager
         // Azure SDK: ArmClient.GetSubscriptionResource
         // Documentation: https://learn.microsoft.com/en-us/dotnet/api/azure.resourcemanager.armclient.getsubscriptionresource
         var subscription = await _armClient.GetSubscriptionResource(new ResourceIdentifier($"/subscriptions/{subscriptionId}")).GetAsync();
-        var tenantId = subscription.Value.Data.TenantId;
-
-        if (tenantId is null)
-        {
-            throw new Exception("Failed to retrieve Tenant ID.");
-        }
+        var tenantId = subscription.Value.Data.TenantId ?? throw new Exception("Failed to retrieve Tenant ID.");
 
         // Create Azure AD Application
         // Microsoft Graph API: Applications - Create
         // Documentation: https://learn.microsoft.com/en-us/graph/api/application-post-applications?view=graph-rest-1.0
         Console.WriteLine("Creating Azure AD Application...");
-        var application = new Application { Id = appName, DisplayName = appName };
-        var createdApp = await _graphClient.Applications.PostAsync(application);
 
-        if (createdApp == null || string.IsNullOrEmpty(createdApp.AppId))
+        var existingApps = await _graphClient.Applications.GetAsync(c => c.QueryParameters.Filter = $"displayName eq '{appName}'");
+
+        Application? createdApp;
+
+        if (existingApps is { Value: [Application app, ..] })
         {
-            throw new Exception("Failed to create Azure AD Application.");
+            createdApp = app;
+            Console.WriteLine($"Application with name '{appName}' already exists. Using existing application with App ID: {createdApp.AppId}");
         }
+        else
+        {
+            var application = new Application { DisplayName = appName };
+            createdApp = await _graphClient.Applications.PostAsync(application);
 
-        Console.WriteLine($"Application created with App ID: {createdApp.AppId}");
+
+            if (createdApp == null || string.IsNullOrEmpty(createdApp.AppId))
+            {
+                throw new Exception("Failed to create Azure AD Application.");
+            }
+
+            Console.WriteLine($"Application created with App ID: {createdApp.AppId}");
+        }
 
         // Create Service Principal
         // Microsoft Graph API: ServicePrincipals - Create
@@ -92,7 +101,7 @@ internal class AzureEntraManager : IEntraManager
 
         return new GitHubSecretData
         {
-            AppId = createdApp.AppId,
+            AppId = createdApp.AppId!,
             TenantId = tenantId.ToString()!,
             SubscriptionId = subscriptionId
         };
