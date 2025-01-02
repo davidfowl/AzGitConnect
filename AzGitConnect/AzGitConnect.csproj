@@ -6,6 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+	<PublishAot>true</PublishAot>
+	<AssemblyName>azgh</AssemblyName>
   </PropertyGroup>
 
 	<ItemGroup>
@@ -18,14 +20,5 @@
 		<!-- Azure SDK Packages -->
 		<PackageReference Include="Azure.Identity" Version="1.*" />
 		<PackageReference Include="Azure.ResourceManager" Version="1.*" />
-
-		<!-- Microsoft Graph SDK Packages -->
-		<PackageReference Include="Microsoft.Graph" Version="5.*" />
 	</ItemGroup>
-
-	<ItemGroup>
-		<!-- Framework Reference for ASP.NET Core (Minimal APIs) -->
-		<FrameworkReference Include="Microsoft.AspNetCore.App" />
-	</ItemGroup>
-
 </Project>

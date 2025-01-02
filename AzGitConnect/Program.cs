@@ -1,12 +1,14 @@
 ﻿using System.CommandLine;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using AzGitConnect;
 
 // This is a github app that supports device flow
 const string GitHubClientId = "Ov23liBhP6pOLo4HJgKO";
 
-var subscriptionIdOption = new Option<string>("--subscription-id", "Azure Subscription ID") { IsRequired = true };
-var repoOption = new Option<string>("--repo", "GitHub repository in the format owner/repo") { IsRequired = true };
-var appName = new Option<string>("--app-name", "Name of the Azure AD Application to create");
+var subscriptionIdOption = new Option<string>(["-s", "--subscription-id"], "Azure Subscription ID") { IsRequired = true };
+var repoOption = new Option<string>(["-r", "--repository"], "GitHub repository in the format owner/repo") { IsRequired = true };
+var appName = new Option<string>(["-n", "--name"], "Name of the Azure AD Application to create");
 var useAzCli = new Option<bool>("--use-az-cli", "Use the Azure CLI for management operations");
 
 var rootCommand = new RootCommand("CLI tool for configuring GitHub Actions with Azure authentication.")
@@ -25,7 +27,7 @@ static async Task RunAsync(string subscriptionId, string fullRepo, string appNam
 {
     var (owner, repo) = fullRepo.Split('/') switch
     {
-        [var r, var b] => (r, b),
+    [var r, var b] => (r, b),
         _ => throw new ArgumentException("Invalid repository format. Please use the format 'owner/repo'.")
     };
 

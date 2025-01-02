@@ -1,20 +1,26 @@
 ﻿using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
-using System.Text.Json.Serialization;
 using Sodium;
 
 namespace AzGitConnect;
 
 internal class GitHubSecretManager(string repo, string accessToken)
 {
+    private readonly HttpClient _httpClient = InitializeHttpClient(accessToken);
+
+    private static HttpClient InitializeHttpClient(string accessToken)
+    {
+        var httpClient = new HttpClient();
+        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        var an = typeof(Program).Assembly.GetName();
+        httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue(an.Name!, $"{an.Version}"));
+        return httpClient;
+    }
+
     public async Task<GitHubPublicKey> GetGitHubPublicKeyAsync()
     {
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        httpClient.DefaultRequestHeaders.Add("User-Agent", "Azure-GitHub-CLI");
-
-        return (await httpClient.GetFromJsonAsync<GitHubPublicKey>($"https://api.github.com/repos/{repo}/actions/secrets/public-key"))!;
+        return (await _httpClient.GetFromJsonAsync($"https://api.github.com/repos/{repo}/actions/secrets/public-key", AppJsonContext.Default.GitHubPublicKey))!;
     }
 
     public async Task SetGitHubSecretAsync(string secretName, string secretValue, GitHubPublicKey publicKey)
@@ -23,18 +29,14 @@ internal class GitHubSecretManager(string repo, string accessToken)
         string encryptedValue = EncryptSecret(secretValue, publicKey.Key);
 
         // Prepare the API request payload
-        var payload = new
+        var payload = new GithubSecret
         {
-            encrypted_value = encryptedValue,
-            key_id = publicKey.KeyId
+            EncryptedValue = encryptedValue,
+            KeyId = publicKey.KeyId
         };
 
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        httpClient.DefaultRequestHeaders.Add("User-Agent", "Azure-GitHub-CLI");
-
         string url = $"https://api.github.com/repos/{repo}/actions/secrets/{secretName}";
-        var response = await httpClient.PutAsJsonAsync(url, payload);
+        var response = await _httpClient.PutAsJsonAsync(url, payload, AppJsonContext.Default.GithubSecret);
 
         if (response.IsSuccessStatusCode)
         {
@@ -56,13 +58,4 @@ internal class GitHubSecretManager(string repo, string accessToken)
 
         return Convert.ToBase64String(sealedPublicKeyBox);
     }
-}
-
-public class GitHubPublicKey
-{
-    [JsonPropertyName("key_id")]
-    public required string KeyId { get; set; }
-
-    [JsonPropertyName("key")]
-    public required string Key { get; set; }
 }

@@ -2,6 +2,7 @@
   "profiles": {
     "GithubAzureUtility": {
       "commandName": "Project",
+      "commandLineArgs": "-s 39a289cd-f0fc-4d59-a745-17cf49d6aafd -r davidfowl/AzureActions",
       "dotnetRunMessages": true
     }
   }

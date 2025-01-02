@@ -1,6 +1,5 @@
 ﻿using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace AzGitConnect;
 
@@ -12,7 +11,13 @@ internal class AzCliAzureEntraManager : IEntraManager
 
         Console.WriteLine("Creating Azure AD Application...");
         string appCreateOutput = await ExecuteCommand("az", $"ad app create --display-name \"{appName}\"");
-        var appDetails = JsonSerializer.Deserialize<AzureApplication>(appCreateOutput)!;
+        var appDetails = JsonSerializer.Deserialize(appCreateOutput, AppJsonContext.Default.Application)!;
+
+        if (appDetails == null || string.IsNullOrEmpty(appDetails.AppId))
+        {
+            throw new Exception("Failed to create Azure AD Application.");
+        }
+
         Console.WriteLine($"Application created with App ID: {appDetails.AppId}");
 
         Console.WriteLine("Creating Service Principal...");
@@ -59,7 +64,7 @@ internal class AzCliAzureEntraManager : IEntraManager
         static async Task<Dictionary<string, FederatedIdentityCredential>> GetFederatedIdentityCredentials(string appId)
         {
             var output = await ExecuteCommand("az", $"ad app federated-credential list --id \"{appId}\"");
-            return (JsonSerializer.Deserialize<FederatedIdentityCredential[]>(output) ?? []).ToDictionary(c => c.Name);
+            return (JsonSerializer.Deserialize(output, AppJsonContext.Default.FederatedIdentityCredentialArray) ?? []).ToDictionary(c => c.Name!);
         }
 
         Console.WriteLine("Adding Federated Identity Credential...");
@@ -161,17 +166,5 @@ internal class AzCliAzureEntraManager : IEntraManager
         await disposable.DisposeAsync();
 
         return sb.ToString();
-    }
-
-    private class AzureApplication
-    {
-        [JsonPropertyName("appId")]
-        public required string AppId { get; set; }
-    }
-
-    private class FederatedIdentityCredential
-    {
-        [JsonPropertyName("name")]
-        public required string Name { get; set; }
     }
 }
