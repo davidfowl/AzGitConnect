@@ -9,7 +9,7 @@ const string GitHubClientId = "Ov23liBhP6pOLo4HJgKO";
 var subscriptionIdOption = new Option<string>(["-s", "--subscription-id"], "Azure Subscription ID") { IsRequired = true };
 var repoOption = new Option<string>(["-r", "--repository"], "GitHub repository in the format owner/repo") { IsRequired = true };
 var appName = new Option<string>(["-n", "--name"], "Name of the Azure AD Application to create");
-var useAzCli = new Option<bool>("--use-az-cli", "Use the Azure CLI for management operations");
+var useAzCli = new Option<bool>("--use-az-cli", () => true, "Use the Azure CLI for management operations");
 
 var rootCommand = new RootCommand("CLI tool for configuring GitHub Actions with Azure authentication.")
 {
