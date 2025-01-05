@@ -161,15 +161,13 @@ internal class AzureEntraManager : IEntraManager
     private async Task<List<FederatedIdentityCredential>> GetFederatedIdentityCredentialsAsync(string appId)
     {
         var response = await _httpClient.GetAsync($"applications/{appId}/federatedIdentityCredentials");
-        response.EnsureSuccessStatusCode();
         var result = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.GraphApiResponseFederatedIdentityCredential);
         return result?.Value ?? [];
     }
 
     private async Task AddFederatedIdentityCredentialAsync(string appId, FederatedIdentityCredential credential)
     {
-        var response = await _httpClient.PostAsJsonAsync($"applications/{appId}/federatedIdentityCredentials", credential, AppJsonContext.Default.FederatedIdentityCredential);
-        response.EnsureSuccessStatusCode();
+        await _httpClient.PostAsJsonAsync($"applications/{appId}/federatedIdentityCredentials", credential, AppJsonContext.Default.FederatedIdentityCredential);
     }
 
     internal class AuthenticationHandler(TokenCredential credential) : DelegatingHandler
@@ -186,10 +184,16 @@ internal class AzureEntraManager : IEntraManager
 
             if (!response.IsSuccessStatusCode)
             {
+                await response.Content.LoadIntoBufferAsync();
+
                 Console.WriteLine(request.RequestUri);
                 var errorResponse = await response.Content.ReadFromJsonAsync(AppJsonContext.Default.GraphApiError, cancellationToken: cancellationToken);
                 Console.WriteLine(JsonSerializer.Serialize(errorResponse, AppJsonContext.Default.GraphApiError));
-                response.EnsureSuccessStatusCode();
+
+                if (response.StatusCode != System.Net.HttpStatusCode.NotFound)
+                {
+                    response.EnsureSuccessStatusCode();
+                }
             }
 
             return response;
