@@ -11,7 +11,7 @@ internal class ExecutableUtil
 
         string[] fmtStrings = OperatingSystem.IsWindows() ? ["{0}.exe", "{0}.cmd"] : ["{0}"];
 
-        foreach (var dir in pathVariable?.Split(';') ?? [])
+        foreach (var dir in pathVariable?.Split(pathSeparator) ?? [])
         {
             foreach (var fmtString in fmtStrings)
             {
