@@ -11,10 +11,6 @@
 
 ## Getting Started
 
-1. Run `az login` to setup account.
-1. Run `azgh -s [YOUR-AZURE-SUBSCRIPTION-ID] -r [YOUR-GITHUB-REPOSITORY]` to create the default resources to connect Azure and GitHub Actions.  For example, `azgh -s 3c12b179-d7f9-4970-bb63-825995a1955c -r davidfowl/AzGitConnect`.
-
-
 ### Prerequisites
 
 1. **Azure CLI**:
@@ -23,3 +19,8 @@
    - Ensure access to your GitHub repositories.
 3. **Dotnet SDK**:
    - Install the [.NET SDK](https://dotnet.microsoft.com/download).
+
+### Run the tool
+
+1. Run `az login` to setup your Azure account.
+1. Run `azgh -s [YOUR-AZURE-SUBSCRIPTION-ID] -r [YOUR-GITHUB-REPOSITORY]` to create the default resources to connect Azure and GitHub Actions.  For example, `azgh -s 3c12b179-d7f9-4970-bb63-825995a1955c -r davidfowl/AzGitConnect`.
